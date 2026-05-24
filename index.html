@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ML Cheat Sheet — Esame sklearn</title>
+  <link rel="stylesheet" href="assets/style.css" />
+</head>
+<body>
+
+<!-- ===== Header ===== -->
+<header>
+  <a class="header-logo" href="#" onclick="activateSection('decision');return false;">
+    <span class="logo-icon">🤖</span>
+    <span>ML Cheat Sheet</span>
+    <span class="logo-sub">sklearn · esame</span>
+  </a>
+
+  <div class="search-wrap">
+    <i class="search-icon">🔍</i>
+    <input type="text" id="search" placeholder="Cerca snippet… (es. StandardScaler, confusion, r2_score)" autocomplete="off" />
+    <button class="search-clear" id="searchClear" title="Cancella ricerca">✕</button>
+  </div>
+
+  <span class="search-count" id="searchCount"></span>
+</header>
+
+<!-- ===== Layout ===== -->
+<div class="layout">
+
+  <!-- Sidebar -->
+  <aside>
+    <div class="sidebar-section-label">Guida</div>
+    <div class="nav-item active" data-section="decision" onclick="activateSection('decision')">
+      <span class="nav-icon">🧭</span>
+      <span>Che problema è?</span>
+    </div>
+
+    <div class="sidebar-section-label" style="margin-top:0.5rem">Sezioni</div>
+    <div class="nav-item" data-section="imports" onclick="activateSection('imports')">
+      <span class="nav-icon">📦</span>
+      <span>Import</span>
+      <span class="nav-count" id="count-imports"></span>
+    </div>
+    <div class="nav-item" data-section="eda" onclick="activateSection('eda')">
+      <span class="nav-icon">🔍</span>
+      <span>EDA</span>
+      <span class="nav-count" id="count-eda"></span>
+    </div>
+    <div class="nav-item" data-section="preprocessing" onclick="activateSection('preprocessing')">
+      <span class="nav-icon">⚙️</span>
+      <span>Preprocessing</span>
+      <span class="nav-count" id="count-preprocessing"></span>
+    </div>
+    <div class="nav-item" data-section="classification" onclick="activateSection('classification')">
+      <span class="nav-icon">🏷️</span>
+      <span>Classificazione</span>
+      <span class="nav-count" id="count-classification"></span>
+    </div>
+    <div class="nav-item" data-section="regression" onclick="activateSection('regression')">
+      <span class="nav-icon">📈</span>
+      <span>Regressione</span>
+      <span class="nav-count" id="count-regression"></span>
+    </div>
+    <div class="nav-item" data-section="metrics" onclick="activateSection('metrics')">
+      <span class="nav-icon">📊</span>
+      <span>Metriche</span>
+      <span class="nav-count" id="count-metrics"></span>
+    </div>
+    <div class="nav-item" data-section="plots" onclick="activateSection('plots')">
+      <span class="nav-icon">🎨</span>
+      <span>Grafici</span>
+      <span class="nav-count" id="count-plots"></span>
+    </div>
+
+    <div class="sidebar-section-label" style="margin-top:0.5rem">Avanzato</div>
+    <div class="nav-item" data-section="clustering" onclick="activateSection('clustering')">
+      <span class="nav-icon">🔵</span>
+      <span>Clustering</span>
+      <span class="nav-count" id="count-clustering"></span>
+    </div>
+    <div class="nav-item" data-section="errors" onclick="activateSection('errors')">
+      <span class="nav-icon">⚠️</span>
+      <span>Errori comuni</span>
+      <span class="nav-count" id="count-errors"></span>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main id="main"></main>
+</div>
+
+<script src="data/snippets.js"></script>
+<script>
+/* ============================================================
+   Syntax highlighting — minimale, zero dipendenze
+   ============================================================ */
+const PY_KEYWORDS = new Set([
+  'import','from','as','def','class','return','if','elif','else','for','while',
+  'in','not','and','or','is','None','True','False','pass','raise','try','except',
+  'finally','with','lambda','yield','print','range','len','isinstance','type',
+  'break','continue','global','nonlocal','del','assert'
+]);
+
+function highlightPython(raw) {
+  const lines = raw.split('\n');
+  return lines.map(line => {
+    // Comments
+    const commentIdx = findCommentIdx(line);
+    let code = commentIdx >= 0 ? line.slice(0, commentIdx) : line;
+    let comment = commentIdx >= 0 ? line.slice(commentIdx) : '';
+
+    let out = '';
+    let i = 0;
+    while (i < code.length) {
+      // String: "..." or '...'
+      if (code[i] === '"' || code[i] === "'") {
+        let q = code[i];
+        let j = i + 1;
+        // triple-quote check
+        if (code.slice(i, i+3) === q.repeat(3)) {
+          q = q.repeat(3);
+          j = i + 3;
+        }
+        while (j < code.length) {
+          if (code[j] === '\\') { j += 2; continue; }
+          if (code.slice(j, j + q.length) === q) { j += q.length; break; }
+          j++;
+        }
+        out += `<span class="str">${esc(code.slice(i, j))}</span>`;
+        i = j;
+        continue;
+      }
+      // Numbers
+      if (/[0-9]/.test(code[i]) && (i === 0 || /\W/.test(code[i-1]))) {
+        let j = i;
+        while (j < code.length && /[0-9._e]/.test(code[j])) j++;
+        out += `<span class="num">${esc(code.slice(i, j))}</span>`;
+        i = j;
+        continue;
+      }
+      // Identifiers / keywords
+      if (/[a-zA-Z_]/.test(code[i])) {
+        let j = i;
+        while (j < code.length && /[a-zA-Z0-9_]/.test(code[j])) j++;
+        const word = code.slice(i, j);
+        // Peek if followed by '(' → function call
+        const isFn = j < code.length && code[j] === '(';
+        // Peek prev char for class (after 'class ')
+        if (PY_KEYWORDS.has(word)) {
+          out += `<span class="kw">${esc(word)}</span>`;
+        } else if (isFn) {
+          out += `<span class="fn">${esc(word)}</span>`;
+        } else if (/^[A-Z]/.test(word)) {
+          out += `<span class="cls">${esc(word)}</span>`;
+        } else {
+          out += esc(word);
+        }
+        i = j;
+        continue;
+      }
+      out += esc(code[i]);
+      i++;
+    }
+    if (comment) out += `<span class="cmt">${esc(comment)}</span>`;
+    return out;
+  }).join('\n');
+}
+
+function findCommentIdx(line) {
+  let inStr = false, q = '', i = 0;
+  while (i < line.length) {
+    const c = line[i];
+    if (!inStr && (c === '"' || c === "'")) {
+      const triple = line.slice(i, i+3);
+      if (triple === '"""' || triple === "'''") { inStr = true; q = triple; i += 3; continue; }
+      inStr = true; q = c; i++; continue;
+    }
+    if (inStr) {
+      if (line[i] === '\\') { i += 2; continue; }
+      if (line.slice(i, i + q.length) === q) { inStr = false; i += q.length; continue; }
+      i++; continue;
+    }
+    if (c === '#') return i;
+    i++;
+  }
+  return -1;
+}
+
+function esc(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+/* ============================================================
+   Rendering
+   ============================================================ */
+let currentSection = 'decision';
+let searchQuery = '';
+
+function activateSection(key) {
+  currentSection = key;
+  searchQuery = '';
+  document.getElementById('search').value = '';
+  document.getElementById('searchClear').classList.remove('visible');
+  document.getElementById('searchCount').textContent = '';
+
+  document.querySelectorAll('.nav-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.section === key);
+  });
+
+  renderSection(key);
+}
+
+function renderSection(key) {
+  const main = document.getElementById('main');
+  if (key === 'decision') {
+    main.innerHTML = renderDecision();
+  } else {
+    const section = SNIPPETS[key];
+    if (!section) return;
+    main.innerHTML = `
+      <div class="section-view">
+        <div class="section-header">
+          <div class="section-title">${section.icon} ${section.label}</div>
+          <div class="section-subtitle">${section.items.length} snippet disponibili</div>
+        </div>
+        <div class="card-grid" id="card-grid">
+          ${section.items.map(item => renderCard(item)).join('')}
+        </div>
+      </div>`;
+  }
+}
+
+function renderCard(item, highlight = '') {
+  const codeHtml = highlight
+    ? highlightAndMark(item.code, highlight)
+    : highlightPython(item.code);
+
+  const titleHtml = highlight ? markText(item.title, highlight) : esc(item.title);
+
+  return `
+    <div class="card ${highlight ? 'highlight' : ''}">
+      <div class="card-header">
+        <div class="card-title-group">
+          <span class="card-title">${titleHtml}</span>
+          <span class="tag tag-${item.tagColor}">${esc(item.tag)}</span>
+        </div>
+        <button class="copy-btn" onclick="copyCode(this, ${JSON.stringify(item.code)})">
+          <span>📋</span> Copia
+        </button>
+      </div>
+      ${item.when  ? `<div class="card-when">💡 ${esc(item.when)}</div>`                          : ''}
+      ${item.cause ? `<div class="card-cause"><strong>⚠️ Causa:</strong> ${esc(item.cause)}</div>` : ''}
+      <div class="code-block">
+        <pre><code>${codeHtml}</code></pre>
+      </div>
+    </div>`;
+}
+
+function highlightAndMark(code, query) {
+  const highlighted = highlightPython(code);
+  if (!query) return highlighted;
+  const re = new RegExp(`(${escapeRegex(query)})`, 'gi');
+  return highlighted.replace(re, '<mark>$1</mark>');
+}
+
+function markText(text, query) {
+  if (!query) return esc(text);
+  const re = new RegExp(`(${escapeRegex(query)})`, 'gi');
+  return esc(text).replace(re, '<mark>$1</mark>');
+}
+
+function escapeRegex(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/* ============================================================
+   Decision guide
+   ============================================================ */
+function renderDecision() {
+  return `
+  <div class="section-view decision-container">
+    <div class="section-header">
+      <div class="section-title">🧭 Che problema è?</div>
+      <div class="section-subtitle">Guida decisionale — dal target all'algoritmo</div>
+    </div>
+
+    <div class="decision-tree">
+
+      <div class="decision-node">
+        <div class="decision-question">❓ Qual è il tipo della variabile target (y)?</div>
+        <div class="decision-answers">
+          <div class="decision-answer">
+            <div class="decision-if">Se</div>
+            <div class="decision-then green">🏷️ Categorica / Discreta</div>
+            <div class="decision-desc">Il target ha un numero finito di classi (etichette, categorie)</div>
+            <div class="decision-examples">es: 'spam'/'ham', 0/1, 'cane'/'gatto'/'topo'</div>
+          </div>
+          <div class="decision-answer">
+            <div class="decision-if">Se</div>
+            <div class="decision-then orange">📈 Numerica / Continua</div>
+            <div class="decision-desc">Il target è un numero che può assumere infiniti valori</div>
+            <div class="decision-examples">es: prezzo casa, temperatura, età stimata</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="decision-node">
+        <div class="decision-question">🏷️ Target categorico → <span style="color:var(--green)">CLASSIFICAZIONE</span></div>
+        <div class="decision-answers">
+          <div class="decision-answer">
+            <div class="decision-if">Se 2 classi</div>
+            <div class="decision-then blue">Binaria</div>
+            <div class="decision-desc">Solo due possibili output. Usa <code>average='binary'</code> nelle metriche</div>
+            <div class="decision-examples">Sì/No, Positivo/Negativo, 0/1</div>
+          </div>
+          <div class="decision-answer">
+            <div class="decision-if">Se 3+ classi</div>
+            <div class="decision-then purple">Multiclasse</div>
+            <div class="decision-desc">Tre o più classi. Usa <code>average='weighted'</code> o <code>'macro'</code></div>
+            <div class="decision-examples">A/B/C/D, tipologie prodotto, specie animali</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="decision-node">
+        <div class="decision-question">📈 Target numerico → <span style="color:var(--orange)">REGRESSIONE</span></div>
+        <div class="decision-answers">
+          <div class="decision-answer">
+            <div class="decision-if">Se relazione lineare</div>
+            <div class="decision-then orange">Linear / Ridge / Lasso</div>
+            <div class="decision-desc">Features correlate linearmente al target. Partiamo sempre da qui</div>
+            <div class="decision-examples">residui casuali, correlazione visibile</div>
+          </div>
+          <div class="decision-answer">
+            <div class="decision-if">Se relazione non-lineare</div>
+            <div class="decision-then green">Random Forest / SVR</div>
+            <div class="decision-desc">Pattern complessi, interazioni tra feature, valori estremi</div>
+            <div class="decision-examples">prezzi immobili, consumi energetici</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Algoritmi consigliati -->
+    <div class="algo-grid" style="margin-top:1.5rem">
+      <div class="algo-card">
+        <div class="algo-card-title green">🏷️ Algoritmi di Classificazione</div>
+        <div class="algo-list">
+          <div class="algo-item">
+            <span class="algo-name">LogisticRegression</span>
+            <span class="algo-when">baseline, interpretabile, binario</span>
+          </div>
+          <div class="algo-item">
+            <span class="algo-name">RandomForestClassifier</span>
+            <span class="algo-when">robusto, non lineare, feature importance</span>
+          </div>
+          <div class="algo-item">
+            <span class="algo-name">SVC</span>
+            <span class="algo-when">dati non lineari, pochi campioni</span>
+          </div>
+          <div class="algo-item">
+            <span class="algo-name">KNeighborsClassifier</span>
+            <span class="algo-when">semplice, nessun training, scegli k</span>
+          </div>
+          <div class="algo-item">
+            <span class="algo-name">DecisionTreeClassifier</span>
+            <span class="algo-when">interpretabile, visuale, overfitting</span>
+          </div>
+        </div>
+      </div>
+      <div class="algo-card">
+        <div class="algo-card-title orange">📈 Algoritmi di Regressione</div>
+        <div class="algo-list">
+          <div class="algo-item">
+            <span class="algo-name">LinearRegression</span>
+            <span class="algo-when">baseline, relazione lineare</span>
+          </div>
+          <div class="algo-item">
+            <span class="algo-name">Ridge</span>
+            <span class="algo-when">multicollinearità, L2 regularization</span>
+          </div>
+          <div class="algo-item">
+            <span class="algo-name">Lasso</span>
+            <span class="algo-when">feature selection, L1 regularization</span>
+          </div>
+          <div class="algo-item">
+            <span class="algo-name">RandomForestRegressor</span>
+            <span class="algo-when">non lineare, robusto agli outlier</span>
+          </div>
+          <div class="algo-item">
+            <span class="algo-name">SVR</span>
+            <span class="algo-when">non lineare, richiede scaling</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Checklist workflow -->
+    <div class="checklist">
+      <div class="checklist-title">✅ Workflow standard esame</div>
+      <div class="checklist-items">
+        <div class="checklist-item"><span class="step-num">1</span><span><strong>Import</strong> — carica le librerie base e quelle del modello scelto</span></div>
+        <div class="checklist-item"><span class="step-num">2</span><span><strong>EDA</strong> — <code>df.info()</code>, <code>df.describe()</code>, <code>df.isnull().sum()</code>, distribuzione target</span></div>
+        <div class="checklist-item"><span class="step-num">3</span><span><strong>Preprocessing</strong> — gestisci nulli (Imputer), encoding categorici, scaling numerico, split 80/20</span></div>
+        <div class="checklist-item"><span class="step-num">4</span><span><strong>Modello</strong> — fit su train, predict su test; opzionale: cross-validation e GridSearchCV</span></div>
+        <div class="checklist-item"><span class="step-num">5</span><span><strong>Metriche</strong> — classificazione: accuracy + F1 + confusion matrix; regressione: R² + RMSE + MAE</span></div>
+        <div class="checklist-item"><span class="step-num">6</span><span><strong>Grafici</strong> — heatmap correlazioni, distribuzione target, scatter reale vs predetto</span></div>
+      </div>
+    </div>
+
+  </div>`;
+}
+
+/* ============================================================
+   Copy to clipboard
+   ============================================================ */
+async function copyCode(btn, code) {
+  try {
+    await navigator.clipboard.writeText(code);
+  } catch {
+    const ta = document.createElement('textarea');
+    ta.value = code;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+  }
+  btn.classList.add('copied');
+  btn.innerHTML = '<span>✓</span> Copiato!';
+  setTimeout(() => {
+    btn.classList.remove('copied');
+    btn.innerHTML = '<span>📋</span> Copia';
+  }, 2000);
+}
+
+/* ============================================================
+   Search
+   ============================================================ */
+const SEARCHABLE_SECTIONS = ['imports','eda','preprocessing','classification','regression','metrics','plots','clustering','errors'];
+
+document.getElementById('search').addEventListener('input', function() {
+  const q = this.value.trim();
+  searchQuery = q;
+  const clearBtn = document.getElementById('searchClear');
+  clearBtn.classList.toggle('visible', q.length > 0);
+
+  if (!q) {
+    document.getElementById('searchCount').textContent = '';
+    renderSection(currentSection);
+    return;
+  }
+  renderSearch(q);
+});
+
+document.getElementById('searchClear').addEventListener('click', function() {
+  document.getElementById('search').value = '';
+  searchQuery = '';
+  this.classList.remove('visible');
+  document.getElementById('searchCount').textContent = '';
+  renderSection(currentSection);
+  document.getElementById('search').focus();
+});
+
+function renderSearch(q) {
+  const main = document.getElementById('main');
+  const ql = q.toLowerCase();
+  const results = [];
+
+  SEARCHABLE_SECTIONS.forEach(key => {
+    const section = SNIPPETS[key];
+    section.items.forEach(item => {
+      if (
+        item.title.toLowerCase().includes(ql) ||
+        item.tag.toLowerCase().includes(ql) ||
+        item.code.toLowerCase().includes(ql) ||
+        (item.when  && item.when.toLowerCase().includes(ql)) ||
+        (item.cause && item.cause.toLowerCase().includes(ql))
+      ) {
+        results.push({ ...item, _section: section.label, _sectionIcon: section.icon });
+      }
+    });
+  });
+
+  document.getElementById('searchCount').textContent =
+    results.length === 0 ? 'Nessun risultato' : `${results.length} risultat${results.length === 1 ? 'o' : 'i'}`;
+
+  // Deactivate nav items during search
+  document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+
+  if (results.length === 0) {
+    main.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">🔍</div>
+        <p>Nessun snippet trovato per "<strong>${esc(q)}</strong>"</p>
+        <p style="margin-top:.5rem;font-size:.8rem">Prova con: sklearn, imputer, scaler, r2, confusion…</p>
+      </div>`;
+    return;
+  }
+
+  main.innerHTML = `
+    <div class="section-view">
+      <div class="search-results-info">
+        Risultati per "<strong>${esc(q)}</strong>" — ${results.length} snippet
+      </div>
+      <div class="card-grid">
+        ${results.map(item => renderCard(item, q)).join('')}
+      </div>
+    </div>`;
+}
+
+/* ============================================================
+   Keyboard shortcut — / per focus sulla barra di ricerca
+   ============================================================ */
+document.addEventListener('keydown', function(e) {
+  if (e.key === '/' && document.activeElement !== document.getElementById('search')) {
+    e.preventDefault();
+    document.getElementById('search').focus();
+  }
+  if (e.key === 'Escape' && document.activeElement === document.getElementById('search')) {
+    document.getElementById('searchClear').click();
+    document.getElementById('search').blur();
+  }
+});
+
+/* ============================================================
+   Init — popola contatori sidebar
+   ============================================================ */
+function init() {
+  SEARCHABLE_SECTIONS.forEach(key => {
+    const el = document.getElementById('count-' + key);
+    if (el && SNIPPETS[key]) el.textContent = SNIPPETS[key].items.length;
+  });
+  renderDecision();
+}
+
+init();
+</script>
+</body>
+</html>
